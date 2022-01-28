@@ -1,0 +1,28 @@
+#tcpclient
+
+procedure main(args)
+     local msg := ""
+     server := args[1] | "localhost:8080"
+     sock := open(server, "n", 5000) | stop("open(",server,") ERROR: ", &errortext)
+     flist := [sock]
+     thread user_input(sock)
+     repeat {
+        L := select(flist) | stop("select() Error: ", &errortext)
+        every f := !L  do
+            case f of {
+                sock :  {
+                    write("server says:", ready(f))
+                    if msg == "goodbye" then break
+                }
+            } # case
+            }
+     close(sock)
+ end
+
+procedure  user_input(s)
+     repeat {
+         msg := read() 
+		 #request := "HEAD /hello.txt HTTP/1.1\r\nUser-Agent: curl/7.16.3 libcurl/7.16.3 OpenSSL/0.9.7l zlib/1.2.3\r\nHost: www.example.com\r\nAccept-Language: en, mi\r\n\r\n"
+         writes(s, msg)  | stop(&errortext)
+     }
+ end

@@ -1,0 +1,407 @@
+link strings
+link ximage
+global sock_list
+class TCPSession(sock)
+   # The thread function, encapsulate one session
+   method tcp_session()
+      write("new thread, id: ", serial(), "  socket:", image(sock))
+      repeat {
+         if *select(sock) > 0 then {
+            if msg := ready(sock) then {      # read whatever available on the socket
+               msg := replace(msg, "\\r\\n" , "\r\n")
+			   write(image(sock), " : ", image(msg)) # write to screen
+#-----------------------------------------------------TESTING PARSING AND HEAD REQUEST--------------------------------------------            
+		
+			 if msg == "" then next 
+			 if /msg then next
+			 if L:=parse_request(msg) then{								
+
+				}
+				else{ 
+					e:=handle_error("400")
+					write(e)
+				}
+			write("*!****!******!")
+			write(ximage(L))
+			write("*!****!******!")
+			write("\nEnd of Transmission\n\n\n")
+			 writes(sock,L) #L is a list, expects a String
+#--------------------------------------------------------------END TESTING-------------------------------------------------------
+               #writes(sock, image(msg))                     # send back to the client
+               }
+            else {  # We see activity on the socket but nothing to read, assume client has closed the socket
+               write("closing socket: ", image(sock))
+               delete(sock_list, sock)
+               close(sock)
+               break # done, break out of the loop
+            }
+         }
+      }
+   end
+   initially(s)
+      sock := s
+      thread tcp_session()
+end
+class TCPServer(addrport)
+   method run()
+      write("Server running at ", addrport, "  Press CTRL+C to stop...")
+      # The main thread is just a thread orchestrator
+      # every time a client connects, a new thread is created to handle it
+      repeat {
+         sock := tcp_socket(addrport) # block and wait to accept a new connection
+         write("launching a new thread...")
+         TCPSession(sock)
+       }
+   end
+   method tcp_socket()
+      write("Open tcp socket at ", addrport)
+      s := open(addrport, "na") |
+           stop("open(",s,") ERROR: ", &errortext)
+      insert(sock_list, s)
+      return s
+   end
+   initially(p)
+      addrport := p
+end
+link basename
+link xoptions
+procedure usage()
+   prog := basename(&progname)
+   write("Usage: ", prog, " [options]\n")
+   write(prog, " is a unicon http server")
+   write("Options:")
+   write("\t -a : address to bind to, default to any addr")
+   write("\t -p : port to use, default to 8080")
+   write("\t -h : show this help\n")
+   exit(-1)
+end
+procedure main(args)
+   local opts, port, addr
+   opts := xoptions(args, "ha:p+")
+   /opts["h"] | usage()
+   addr := \opts["a"] | ""
+   port := \opts["p"] | "8080"
+   0 < port < 65536 | stop("invalid port: ", port)
+   sock_list := mutex(set())
+   trap("SIGINT", sig)
+   tcp_server := TCPServer(addr || ":" || port)
+   tcp_server.run()
+end
+procedure sig(siganl)
+   write("\nshutdown signal received! Server Shutting down...")
+   every close(!sock_list)
+   exit(0)
+end
+	
+
+#-----------------------------TESTING PARSING AND HEAD REQUEST----------------------------------------------------------
+
+
+#Parses request using HTTP formatting norms into request line, header fields, and body. Returns all three in a list
+procedure parse_request(r)
+   local request_line, header_fields, body
+    header_fields := [ ]
+	#write("inside parse_request:",r)                          #debugging
+
+   if r ?{
+      request_line := tab(find("\r\n"))
+	  write("*#*#*#*#*#*#*#*#*#*")
+	  write(request_line)
+	  write("*#*#*#*#*#*#*#*#*#*")
+      #write("inside string scan, request_line:",request_line)                          #debugging
+	  move(2)
+      line := tab(find("\r\n"))
+	  write("*$*$*$*$*$*$*$*$*$*")
+	  write(line)
+	  write("*$*$*$*$*$*$*$*$*$*")
+	  #write("inside string scan, header_field:",line)                          #debugging
+      if /line then return handle_status_codes("400")
+      while line ~== "" do {
+         put(header_fields, line)
+         move(2)
+         line := tab(find("\r\n"))
+         }
+      move(2)
+      body := tab(0) 
+
+	l:=list()
+	testStr := ""
+	put(l,request_line)
+	put(l,header_fields)
+	put(l,body)
+	write("-------------------------------------------------------------------------------------")
+	}then {
+		p:=parse_request_line(l[1]) # p is a list
+		h:=handle_request(p,header_fields) # h is a list
+		return h
+	}
+	return handle_status_codes("400")
+end
+
+#Takes request line (passed into function as rl) parsed out of request and returns a list of form of request, request target, and HTTP version
+procedure parse_request_line(rl)
+    local form, request_target, HTTP_version, request_line_list
+    request_line_list:=[]
+    rl ? {
+        form := tab(find(" "))
+        put(request_line_list,form)
+        move(2)
+        request_target := tab(find(" "))
+        put(request_line_list,request_target)
+		move(1)
+		HTTP_version := tab(0)
+        put(request_line_list, HTTP_version)
+    }	
+	return request_line_list
+end
+
+#Takes in a list of header fields parsed out from the request (passed in as hf) and returns a table with key being type of header and value being header info
+procedure parse_header_fields(hf)
+# finds all the header fields
+    local key
+    t:=table()
+    every line := !hf do {   	
+		line ? {				
+            line := tab(find(":"))
+			move(2)
+            line2:= tab(0)
+            t[line]:=line2
+        }
+    }
+    return t
+end
+
+procedure parse_body(bf)
+
+end
+
+procedure handle_request(r,hf)
+
+	case r[1] of{
+		"HEAD" : return handle_HEAD(r,hf)
+		"GET" : return handle_GET(r,hf)
+		"DELETE" : return handle_DELETE(r,hf)
+		default: return handle_status_codes("400")
+	}
+end
+
+
+#Passes request_line_list (r) such as that from parse_request_line returns file information using stat()
+procedure handle_HEAD(r,hf)
+	write("*@*@*@*@*@*")
+	file_name:=r[2]
+	write(file_name)
+	write("*@*@*@*@*@*")
+	response:=[] # want response to be a string not a list
+	StrResponse := ""
+	st := stat(file_name) | return handle_status_codes("404")
+		StrResponse := StrResponse || r[3]||" "||handle_status_codes("200")||"\r\nDate:"||&date||" "||&clock||"\r\nServer: Unicon Server"||"\r\nLast-Modified: "||ctime(st.mtime)||"\r\nETag: \""||hash(st.mtime)||"\"\r\nVary: Authorization,Accept\r\nAccept-Ranges: bytes\r\nContent-Length: "||st.size||"\r\nContent-Type: "||get_MIME(file_type)||"\r\nConnection: keep-alive"
+		write("***********")
+		write(StrResponse)
+		write("***********")
+		return StrResponse
+		
+end
+
+procedure handle_GET(r,hf)
+	write("THIS IS MY TEST"||r[2])
+	if /r[2] then return handle_status_codes(400)
+	if r[2]=="" then{
+		filename:="index.html"
+		#filename:="helloworld.jpg"
+	}else{
+		filename:=r[2]
+	}
+	
+	filename?{
+		tab(find("."))
+		file_type:=tab(0)
+	}
+	write("FILETYPE: "||file_type)
+	
+	if(file_type==".jpg"|".gif"|".jpeg"|".png"|".bmp") then{
+		fin := open(filename,"ru")| {
+			t:=r[3]||" "||handle_status_codes("404")
+			return t
+		}
+		if p := stat(fin)then(
+			data := reads(fin, p.size)|fail
+		
+		)else(handle_status_codes("404"))
+		
+		close(fin)
+	}else{
+		fin := open(filename)| {
+			t:=r[3]||" "||handle_status_codes("404")
+			return t
+		}
+		if p := stat(fin)then(
+			data := reads(fin, p.size)|fail
+		
+		)else(handle_status_codes("404"))
+		
+		close(fin)
+	}
+	
+	st:=stat(filename)
+	
+	#----------------------------------------------------------------------------------------------------------------------------------------------
+	#TEST STRING WITH CORRECT FORMAT
+	
+	#t:="HTTP/1.1 200 OK\r\nDate: Mon, 27 Jul 2009 12:28:53 GMT\r\nServer: Apache/2.2.14 (Win32)\r\nLast-Modified: Wed, 22 Jul 2009 19:15:56 GMT\r\nETag: \"34aa387-d-1568eb00\"\r\nVary: Authorization,Accept\r\nAccept-Ranges: bytes\r\nContent-Length: 88\r\nContent-Type: text/html\r\nConnection: Closed\r\n\r\n"
+	t:=r[3]||" "||handle_status_codes("200")||"\r\nDate:"||&date||" "||&clock||"\r\nServer: Unicon Server"||"\r\nLast-Modified: "||ctime(st.mtime)||"\r\nETag: \""||hash(st.mtime)||"\"\r\nVary: Authorization,Accept\r\nAccept-Ranges: bytes\r\nContent-Length: "||st.size||"\r\nContent-Type: "||get_MIME(file_type)||"\r\nConnection: keep-alive"
+	
+	#NOW WE NEED TO WORK ON POPULATING THIS STRING WITH ACTUAL INFORMATION IN THIS FORMAT
+	#-------------------------------------------------------------------------------------------------------------------------------------------------
+	
+	t:=t||"\r\n\r\n"||data
+	#Prints the img binary
+	#write("T")
+	#write(t)
+	
+	return t
+		
+end
+
+procedure handle_DELETE(r,hf)
+	if r[2]==""|/r[2] then{
+		return handle_status_codes(400)
+	}else{
+		filename:=r[2]
+	}
+	
+	remove(filename)
+end
+
+procedure handle_status_codes(s)
+	case s of{
+		#	Informational 1xx
+		"100" : return "100 Continue"
+		"101" : return "101 Switching Protocols"
+
+		#	Successful 2xx
+		"200" : return "200 OK"
+		"201" : return "201 Created"
+		"202" : return "202 Accepted"
+		"203" : return "203 Non-Authoritative Information"
+		"204" : return "204 No Content"
+		"205" : return "205 Reset Content"
+
+		#	Redirection 3xx
+		"300" : return "300 Multiple Choices"
+		"301" : return "301 Moved Permanently" 
+		"302" : return "302 Found"
+		"303" : return "303 See Other"
+		"305" : return "305 Use Proxy"
+				   
+		#	Client Error 4xx
+		"400" : return "400 Bad Request"
+		"402" : return "402 Payment Required"
+		"403" : return "403 Forbidden"
+		"404" : return "404 Not Found"
+		"405" : return "405 Method Not Allowed"
+		"406" : return "406 Not Acceptable"
+		"408" : return "408 Request Timeout"
+		"409" : return "409 Conflict"
+				   
+		#	Server Error 5xx
+		"500" : return "500 Internal Server Error"
+		"501" : return "501 Not Implemented"
+		"502" : return "502 Bad Gateway"
+		"503" : return "503 Service Unavailable"
+		"504" : return "504 Gateway Timeout"
+		"505" : return "505 HTTP Version Not Supported"
+
+		
+		}
+end
+
+procedure hash(s)
+	local i := 0
+	every i +:= ord(s[1 to min(*s, 10)]) do
+	i *:= 37
+	i +:= *s
+	return i
+end
+
+procedure get_MIME(file)
+	case file of{
+		".aac": return "audio/aac"	#AAC audio	
+		".abw": return "application/x-abiword"	#AbiWord document	
+		".arc": return "application/x-freearc"	#Archive document (multiple files embedded)	
+		".avi": return "video/x-msvideo" 	#AVI: Audio Video Interleave	
+		".azw": return "application/vnd.amazon.ebook"	#Amazon Kindle eBook format	
+		".bin": return "application/octet-stream"	#Any kind of binary data	
+		".bmp": return "image/bmp"	#Windows OS/2 Bitmap Graphics	
+		".bz": return "application/x-bzip"	#BZip archive	
+		".bz2": return "application/x-bzip2"	#BZip2 archive	
+		".cda": return "application/x-cdf"	#CD audio	
+		".csh": return "application/x-csh"	#C-Shell script	
+		".css": return "text/css"	#Cascading Style Sheets (CSS)	
+		".csv": return "text/csv"	#Comma-separated values (CSV)	
+		".doc": return "application/msword"	#Microsoft Word	
+		".docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"	#Microsoft Word (OpenXML)	
+		".eot": return "application/vnd.ms-fontobject"	#MS Embedded OpenType fonts	
+		".epub": return "application/epub+zip"	#Electronic publication (EPUB)	
+		".gz": return "application/gzip"	#GZip Compressed Archive	
+		".gif": return "image/gif"	#Graphics Interchange Format (GIF)	
+		".htm": return "text/html"	#HyperText Markup Language (HTML) 
+		".html":return "text/html"	#HyperText Markup Language (HTML)	
+		".ico": return "image/vnd.microsoft.icon"	#Icon format	
+		".ics": return "text/calendar"	#iCalendar format	
+		".jar": return "application/java-archive"	#Java Archive (JAR)	
+		".jpeg": return "image/jpeg"	#JPEG images
+		".jpg": return "image/jpeg"	#JPEG images	
+		".js": return "text/javascript"	#JavaScript	text/javascript (Specifications: HTML and its reasoning, and IETF)
+		".json": return "application/json" 	#JSON format	
+		".jsonld": return "application/ld+json"	#JSON-LD format	
+		".mid": return "audio/midi"	#Musical Instrument Digital Interface (MIDI)	audio/midi audio/x-midi
+		".midi": return "audio/x-midi"	#Musical Instrument Digital Interface (MIDI)	audio/midi audio/x-midi
+		".mjs": return "text/javascript"	#JavaScript module	
+		".mp3": return "audio/mpeg"	#MP3 audio	
+		".mp4": return "video/mp4"	#MP4 video	
+		".mpeg": return "video/mpeg"	#MPEG Video	
+		".mpkg": return "application/vnd.apple.installer+xml"	#Apple Installer Package	
+		".odp": return "application/vnd.oasis.opendocument.presentation"	#OpenDocument presentation document	
+		".ods": return "application/vnd.oasis.opendocument.spreadsheet"	#OpenDocument spreadsheet document	
+		".odt": return "application/vnd.oasis.opendocument.text"	#OpenDocument text document	
+		".oga": return "audio/ogg"	#OGG audio	
+		".ogv": return "video/ogg"	#OGG video	
+		".ogx": return "application/ogg"	#OGG	
+		".opus": return "audio/opus"	#Opus audio	
+		".otf": return "font/otf"	#OpenType font	
+		".png": return "image/png"	#Portable Network Graphics	
+		".pdf": return "application/pdf"	#Adobe Portable Document Format (PDF)	
+		".php": return "application/x-httpd-php"	#Hypertext Preprocessor (Personal Home Page)	
+		".ppt": return "application/vnd.ms-powerpoint"	#Microsoft PowerPoint	
+		".pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"	#Microsoft PowerPoint (OpenXML)	
+		".rar": return "application/vnd.rar"	#RAR archive	
+		".rtf": return "application/rtf"	#Rich Text Format (RTF)	
+		".sh": return "application/x-sh"	#Bourne shell script	
+		".svg": return "image/svg+xml"	#Scalable Vector Graphics (SVG)	
+		".swf": return "application/x-shockwave-flash"	#Small web format (SWF) or Adobe Flash document	
+		".tar": return "application/x-tar"	#Tape Archive (TAR)	
+		".tif": return "image/tiff"	#Tagged Image File Format (TIFF)
+		".tiff": return "image/tiff"	#Tagged Image File Format (TIFF)	
+		".ts": return "video/mp2t"	#MPEG transport stream	
+		".ttf": return "font/ttf"	#TrueType Font	
+		".txt": return "text/plain" #Text, (generally ASCII or ISO 8859-n)	
+		".vsd": return "application/vnd.visio" #Microsoft Visio	
+		".wav": return "audio/wav"	#Waveform Audio Format
+		".weba": return	"audio/webm" #WEBM audio	
+		".webm": return	"video/webm" #WEBM video	
+		".webp": return	"image/webp" #WEBP image	
+		".woff": return	"font/woff" #Web Open Font Format (WOFF)	
+		".woff2": return "font/woff2"	#Web Open Font Format (WOFF)	
+		".xhtml": return "application/xhtml+xml"	#XHTML	
+		".xls": return "application/vnd.ms-excel" #Microsoft Excel	
+		".xlsx": return	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" #Microsoft Excel (OpenXML)	
+		".xml": return "application/xml" #XML	application/xml is recommended as of RFC 7303 (section 4.1), but text/xml is still seen sometimes. A file with the extension .xml can often be given a more specific MIME type depending on how its contents are meant to be interpreted (for instance, an Atom feed is application/atom+xml), but application/xml serves as a valid default.
+		".xul": return "application/vnd.mozilla.xul+xml"	#XUL	
+		".zip": return "application/zip" #ZIP archive	
+		".3gp": return "video/3gpp" #3GPP audio/video container	video/3gpp audio/3gpp if it doesn't contain video
+		".3g2": return "video/3gpp2" #3GPP2 audio/video container	video/3gpp2 audio/3gpp2 if it doesn't contain video
+		".7z": return "application/x-7z-compressed"	#7-zip archive	
+		default: return "Type Not Found"
+	}
+end
