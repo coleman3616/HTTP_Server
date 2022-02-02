@@ -1,6 +1,6 @@
 link strings
 link ximage
-global sock_list
+global sock_list, config
 class TCPSession(sock)
 #<p>
 #	The method <tt>tcp_session</tt> makes different threads in one session
@@ -78,12 +78,52 @@ procedure usage()
    write("\t -h : show this help\n")
    exit(-1)
 end
+
+# Initializes the global config table using data from the configuration file
+procedure read_config(config_name)
+	local f, line, header, body
+	f := open(config_name) | stop("ERROR: ", config_name, "could not be opened")
+	config := table()
+	while line := read(f) do {
+		line ? {
+			header := tab(find(" "))
+			move(3)
+			body := tab(0)
+			config[header] := body
+		}
+	}
+end
+
+# Returns a set of file type strings from a string delimeted by white space
+procedure get_file_type_set(str)
+	local file_type_set, wchar, word
+	file_type_set := set()
+	wchar := &letters ++ '.'
+	str ? while tab(upto(wchar)) do {
+		word := tab(many(wchar))
+		insert(file_type_set, word)
+	}
+	return file_type_set
+end
+
+# Returns the filetype of a file or path.
+procedure get_file_type(str)
+        local wchar
+        wchar := &letters ++ '.'
+        basename(str) ? {
+                tab(find("."))
+                return tab(many(wchar))
+        }
+        return ""
+end
+
 #<p>
 #	The procedure <tt>main</tt> calls the run method to start the server
 #		<[param args arguments from the command line]>
 #</p>
 procedure main(args)
    local opts, port, addr
+   read_config("config.ini")
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
    addr := \opts["a"] | ""
@@ -312,19 +352,28 @@ class Request_Response(
 #	The method <tt>handle_DELETE</tt> removes the requested file
 #		<[return response confirmation of the removal]>
 #</p>
-	method handle_DELETE()
-		if request_target==""|/request_target then{ s:=handle_status("400")
-													response:=s.message
-													return response}
-		else{
-			filename:=request_target
-		}
-		
-		remove(filename)
-		{ s:=handle_status("200")
+
+        method handle_DELETE()
+                if request_target==""|/request_target then{
+                        s:=handle_status("400")
+                        response:=s.message
+                        return response
+                }
+                filename := request_target
+                filetype := get_file_type(filename)
+                allowed_file_types := get_file_type_set(config["DELETE_File_Types"])
+                if member(allowed_file_types, "any") | member(allowed_file_types, filetype) then {
+			remove(filename)
+			s:=handle_status("200")
 			response:=s.message
-			return response}
-	end
+			return response
+                } else {
+                        s := handle_status("403")
+                        response := s.message
+                        return response
+		}
+        end
+
 #<p>
 #	The method <tt>handle_PUT</tt> adds a file with the data sent by the client, or replaces it if it already exits
 #		<[return response confirmation of the placement]>
