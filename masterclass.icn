@@ -379,55 +379,74 @@ class Request_Response(
 #		<[return response confirmation of the placement]>
 #</p>
 	method handle_PUT()
-
-    if(request_target==""|/request_target) then{
-        { s:=handle_status("400")
-		  response:=s.message
-		  return response}
-    }else{
-        filename:=request_target
-
-        if stat(filename) then{
-        #check if request_target exists in directory (204)
-            f:= open(filename, "w")
-            write(f, body)
-            close(f)
-			{ s:=handle_status("200")
-				response:=s.message
-				return response}
+		if (request_target==""|/request_target) then {
+			s:=handle_status("400")
+			response:=s.message
+			return response
+		} else {
+			filename:=request_target
+			filetype := get_file_type(filename)
+			allowed_file_types := get_file_type_set(config["PUT_File_Types"])
 			
-        }else{
-        #if request_target doesn't exists in directory (201)
-            f:= open(filename, "w")
-            write(f, body)
-            close(f)
-			{ s:=handle_status("201")
+			if not member(allowed_file_types, "any") & not member(allowed_file_types, filetype) then {
+	                        s := handle_status("403")
+        	                response := s.message
+               	        	return response
+			}
+			
+			if stat(filename) then {
+			#check if request_target exists in directory (204)
+				f:= open(filename, "w")
+				write(f, body)
+				close(f)
+				s:=handle_status("200")
 				response:=s.message
-				return response}
-        }
-    }
-end
+				return response
+			} else {
+				#if request_target doesn't exists in directory (201)
+				f := open(filename, "w")
+				write(f, body)
+				close(f)
+				s := handle_status("201")
+				response := s.message
+				return response
+			}
+		}
+	end
 #<p>
 #	The method <tt>handle_POST</tt> adds a file with the data sent by the client, it is not idempotent
 #		<[return response confirmation of the creation]>
 #</p>
-method handle_POST()
-	if(request_target==""|/request_target) then{ s:=handle_status("400")
-								response:=s.message
-								return response}
-	else{
-		filename:=request_target
-			
-		if !stat(filename) then{
-			f:= open(filename, "w")
-			write(f, body)
-			close(f)
-			{ s:=handle_status("201")
-				response:=s.message
-				return response}
-		}
-	}	
-end
+	method handle_POST()
+		if (request_target==""|/request_target) then { 
+			s:=handle_status("400")
+			response:=s.message
+			return response
+		} else {
+			filename := request_target
+			filetype := get_file_type(filename)
+			allowed_file_types := get_file_type_set(config["POST_File_Types"])
+
+			if not member(allowed_file_types, "any") & not member(allowed_file_types, filetype) then {
+				s := handle_status("403")
+				response := s.message
+				return response
+			}
+		
+			if stat(filename) then {
+				s := handle_status("409")
+				response := s.message
+				return response
+			} else {
+				f := open(filename, "w")
+				write(f, body)
+				close(f)
+				s := handle_status("201")
+				response := s.message
+				return response
+			}
+		}	
+	end
 #<p>
 #	The method <tt>hash</tt> takes a random input and makes a hash value from it. Used for the etag
 #		<[param s int to hash]>
