@@ -6,25 +6,25 @@ class TCPSession(sock)
 #	The method <tt>tcp_session</tt> makes different threads in one session
 #</p>
    method tcp_session()
-      write("new thread, id: ", serial(), "  socket:", image(sock))
+      Logger.logWrite("new thread, id: " || serial() || "  socket:" || image(sock))
       repeat {
          if *select(sock) > 0 then {
             if msg := ready(sock) then {      # read whatever available on the socket
                msg := replace(msg, "\\r\\n" , "\r\n")
-			   write(image(sock), " : ", image(msg)) # write to screen        
+			   Logger.logWrite(image(sock) || " : " || image(msg))
 		
 			 if msg == "" then next 
 			 if /msg then next
 			 req:=Request(msg)
 			 
 			 req_resp:=Request_Response(req) 
-						
 			 writes(sock,req_resp.response)                     # send back to the client
+			 Logger.logWrite(image(sock) || req_resp.response)
 
                
                }
             else {  # We see activity on the socket but nothing to read, assume client has closed the socket
-               write("closing socket: ", image(sock))
+	       Logger.logWrite("closing socket: " || image(sock))
                delete(sock_list, sock)
                close(sock)
                break # done, break out of the loop
@@ -42,6 +42,7 @@ class TCPServer(addrport)
 #</p>
    method run()
       write("Server running at ", addrport, "  Press CTRL+C to stop...")
+      Logger.log("Server running at " || addrport || "  Press CTRL+C to stop...")
       # The main thread is just a thread orchestrator
       # every time a client connects, a new thread is created to handle it
       repeat {
@@ -117,6 +118,21 @@ procedure get_file_type(str)
         return ""
 end
 
+class Logger(log_file)
+        method log(msg)
+                writes(log_file, "[", &date, " ",  &clock, "] ", msg, "\n")
+        end
+
+	method logWrite(msg)
+		self.log(msg)
+		write(msg)
+	end
+
+        initially(log_file_path)
+                log_file := open(log_file_path, "a")
+		Logger := self
+end
+
 #<p>
 #	The procedure <tt>main</tt> calls the run method to start the server
 #		<[param args arguments from the command line]>
@@ -124,6 +140,8 @@ end
 procedure main(args)
    local opts, port, addr
    read_config("config.ini")
+   Logger("server_log.txt")
+   #logger := Logger
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
    addr := \opts["a"] | ""
