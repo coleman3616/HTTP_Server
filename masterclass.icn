@@ -19,7 +19,6 @@ class TCPSession(sock)
 			 
 			 req_resp:=Request_Response(req) 
 			 writes(sock,req_resp.response)                     # send back to the client
-			 Logger.logWrite(image(sock) || req_resp.response)
 
                
                }
