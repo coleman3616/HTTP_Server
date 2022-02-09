@@ -140,7 +140,6 @@ procedure main(args)
    local opts, port, addr
    read_config("config.ini")
    Logger("server_log.txt")
-   #logger := Logger
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
    addr := \opts["a"] | ""
