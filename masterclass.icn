@@ -6,12 +6,12 @@ class TCPSession(sock)
 #	The method <tt>tcp_session</tt> makes different threads in one session
 #</p>
    method tcp_session()
-      Logger.logWrite("new thread, id: " || serial() || "  socket:" || image(sock))
+      Logger.logInfoWrite("new thread, id: " || serial() || "  socket:", image(sock))
       repeat {
          if *select(sock) > 0 then {
             if msg := ready(sock) then {      # read whatever available on the socket
                msg := replace(msg, "\\r\\n" , "\r\n")
-			   Logger.logWrite(image(sock) || " : " || image(msg))
+			   Logger.logInfoWrite(image(sock) || " : " || image(msg))
 		
 			 if msg == "" then next 
 			 if /msg then next
@@ -23,7 +23,7 @@ class TCPSession(sock)
                
                }
             else {  # We see activity on the socket but nothing to read, assume client has closed the socket
-	       Logger.logWrite("closing socket: " || image(sock))
+	       Logger.logInfoWrite("closing socket: " || image(sock))
                delete(sock_list, sock)
                close(sock)
                break # done, break out of the loop
@@ -41,7 +41,6 @@ class TCPServer(addrport)
 #</p>
    method run()
       write("Server running at ", addrport, "  Press CTRL+C to stop...")
-      Logger.log("Server running at " || addrport || "  Press CTRL+C to stop...")
       # The main thread is just a thread orchestrator
       # every time a client connects, a new thread is created to handle it
       repeat {
@@ -117,17 +116,53 @@ procedure get_file_type(str)
         return ""
 end
 
-class Logger(log_file)
-        method log(msg)
-                writes(log_file, "[", &date, " ",  &clock, "] ", msg, "\n")
+class Logger(log_file, log_level)
+	# Ideally this method would be private
+        method log(msg, logType)
+                writes(log_file, "[", &date, " ",  &clock, "] ", logType, ":", msg, "\n")
         end
 
-	method logWrite(msg)
-		self.log(msg)
-		write(msg)
+	method logDbg(msg[])
+		if log_level >= 4 then  {
+			self.log(concatList(msg), "DEBUG")
+		}
 	end
 
-        initially(log_file_path)
+	method logInfo(msg[])
+		if log_level >= 3 then  {
+			self.log(concatList(msg), "INFO")
+		}
+	end
+	method logWarn(msg[])
+		if log_level >= 2 then  {
+			self.log(concatList(msg), "WARNING")
+		}
+	end
+	method logError(msg[])
+		if log_level >= 1 then  {
+			self.log(concatList(msg), "ERROR")
+		}
+	end
+
+	method logInfoWrite(msg[])
+		self.logInfo(concatList(msg))
+		write(concatList(msg))
+	end
+
+        method concatList(L)
+                s := ""
+                every s ||:= !L
+                return s
+        end
+
+	# NONE: 0
+	# ERROR: 1
+	# WARN: 2
+	# INFO: 3
+	# DEBUG: 4
+        initially(log_file_path, init_log_level)
+		/init_log_level := 4
+		log_level := init_log_level
                 log_file := open(log_file_path, "a")
 		Logger := self
 end
@@ -139,7 +174,7 @@ end
 procedure main(args)
    local opts, port, addr
    read_config("config.ini")
-   Logger("server_log.txt")
+   Logger("server_log.txt", config["LOG_LEVEL"])
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
    addr := \opts["a"] | ""
