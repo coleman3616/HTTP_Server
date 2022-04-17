@@ -1,6 +1,6 @@
 link strings
 link ximage
-global sock_list, config
+global sock_list, config, HTTPSGLOB
 class TCPSession(sock)
 #<p>
 #	The method <tt>tcp_session</tt> makes different threads in one session
@@ -107,13 +107,8 @@ end
 
 # Returns the filetype of a file or path.
 procedure get_file_type(str)
-        local wchar
-        wchar := &letters ++ '.'
-        basename(str) ? {
-                tab(find("."))
-                return tab(many(wchar))
-        }
-        return ""
+	filesuf = suffix(str)
+	return "." || filesuf[2]
 end
 
 class Logger(log_file, log_level)
@@ -174,6 +169,8 @@ end
 procedure main(args)
    local opts, port, addr
    read_config("config.ini")
+   # Reads the table for the HTTPS Flag and sets it.
+   HTTPSGLOB := config["HTTPS_FLAG"]
    Logger("server_log.txt", config["LOG_LEVEL"])
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
@@ -524,7 +521,8 @@ class Request_Response(
 end
 
 class Mime(MIME_type,
-	type
+	type,
+	FileTable
 )
 #<p>
 #	The method <tt>get_MIME</tt> returns the file extension
@@ -532,89 +530,18 @@ class Mime(MIME_type,
 #		<[return "type" the name of the extension]>
 #</p>
 	method get_MIME(type)
-		case type of{
-			".aac": return "audio/aac"	#AAC audio	
-			".abw": return "application/x-abiword"	#AbiWord document	
-			".arc": return "application/x-freearc"	#Archive document (multiple files embedded)	
-			".avi": return "video/x-msvideo" 	#AVI: Audio Video Interleave	
-			".azw": return "application/vnd.amazon.ebook"	#Amazon Kindle eBook format	
-			".bin": return "application/octet-stream"	#Any kind of binary data	
-			".bmp": return "image/bmp"	#Windows OS/2 Bitmap Graphics	
-			".bz": return "application/x-bzip"	#BZip archive	
-			".bz2": return "application/x-bzip2"	#BZip2 archive	
-			".cda": return "application/x-cdf"	#CD audio	
-			".csh": return "application/x-csh"	#C-Shell script	
-			".css": return "text/css"	#Cascading Style Sheets (CSS)	
-			".csv": return "text/csv"	#Comma-separated values (CSV)	
-			".doc": return "application/msword"	#Microsoft Word	
-			".docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"	#Microsoft Word (OpenXML)	
-			".eot": return "application/vnd.ms-fontobject"	#MS Embedded OpenType fonts	
-			".epub": return "application/epub+zip"	#Electronic publication (EPUB)	
-			".gz": return "application/gzip"	#GZip Compressed Archive	
-			".gif": return "image/gif"	#Graphics Interchange Format (GIF)	
-			".htm": return "text/html"	#HyperText Markup Language (HTML) 
-			".html":return "text/html"	#HyperText Markup Language (HTML)	
-			".ico": return "image/vnd.microsoft.icon"	#Icon format	
-			".ics": return "text/calendar"	#iCalendar format	
-			".jar": return "application/java-archive"	#Java Archive (JAR)	
-			".jpeg": return "image/jpeg"	#JPEG images
-			".jpg": return "image/jpeg"	#JPEG images	
-			".js": return "text/javascript"	#JavaScript	text/javascript (Specifications: HTML and its reasoning, and IETF)
-			".json": return "application/json" 	#JSON format	
-			".jsonld": return "application/ld+json"	#JSON-LD format	
-			".mid": return "audio/midi"	#Musical Instrument Digital Interface (MIDI)	audio/midi audio/x-midi
-			".midi": return "audio/x-midi"	#Musical Instrument Digital Interface (MIDI)	audio/midi audio/x-midi
-			".mjs": return "text/javascript"	#JavaScript module	
-			".mp3": return "audio/mpeg"	#MP3 audio	
-			".mp4": return "video/mp4"	#MP4 video	
-			".mpeg": return "video/mpeg"	#MPEG Video	
-			".mpkg": return "application/vnd.apple.installer+xml"	#Apple Installer Package	
-			".odp": return "application/vnd.oasis.opendocument.presentation"	#OpenDocument presentation document	
-			".ods": return "application/vnd.oasis.opendocument.spreadsheet"	#OpenDocument spreadsheet document	
-			".odt": return "application/vnd.oasis.opendocument.text"	#OpenDocument text document	
-			".oga": return "audio/ogg"	#OGG audio	
-			".ogv": return "video/ogg"	#OGG video	
-			".ogx": return "application/ogg"	#OGG	
-			".opus": return "audio/opus"	#Opus audio	
-			".otf": return "font/otf"	#OpenType font	
-			".png": return "image/png"	#Portable Network Graphics	
-			".pdf": return "application/pdf"	#Adobe Portable Document Format (PDF)	
-			".php": return "application/x-httpd-php"	#Hypertext Preprocessor (Personal Home Page)	
-			".ppt": return "application/vnd.ms-powerpoint"	#Microsoft PowerPoint	
-			".pptx": return "application/vnd.openxmlformats-officedocument.presentationml.presentation"	#Microsoft PowerPoint (OpenXML)	
-			".rar": return "application/vnd.rar"	#RAR archive	
-			".rtf": return "application/rtf"	#Rich Text Format (RTF)	
-			".sh": return "application/x-sh"	#Bourne shell script	
-			".svg": return "image/svg+xml"	#Scalable Vector Graphics (SVG)	
-			".swf": return "application/x-shockwave-flash"	#Small web format (SWF) or Adobe Flash document	
-			".tar": return "application/x-tar"	#Tape Archive (TAR)	
-			".tif": return "image/tiff"	#Tagged Image File Format (TIFF)
-			".tiff": return "image/tiff"	#Tagged Image File Format (TIFF)	
-			".ts": return "video/mp2t"	#MPEG transport stream	
-			".ttf": return "font/ttf"	#TrueType Font	
-			".txt": return "text/plain" #Text, (generally ASCII or ISO 8859-n)	
-			".vsd": return "application/vnd.visio" #Microsoft Visio	
-			".wav": return "audio/wav"	#Waveform Audio Format
-			".weba": return	"audio/webm" #WEBM audio	
-			".webm": return	"video/webm" #WEBM video	
-			".webp": return	"image/webp" #WEBP image	
-			".woff": return	"font/woff" #Web Open Font Format (WOFF)	
-			".woff2": return "font/woff2"	#Web Open Font Format (WOFF)	
-			".xhtml": return "application/xhtml+xml"	#XHTML	
-			".xls": return "application/vnd.ms-excel" #Microsoft Excel	
-			".xlsx": return	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" #Microsoft Excel (OpenXML)	
-			".xml": return "application/xml" #XML	application/xml is recommended as of RFC 7303 (section 4.1), but text/xml is still seen sometimes. A file with the extension .xml can often be given a more specific MIME type depending on how its contents are meant to be interpreted (for instance, an Atom feed is application/atom+xml), but application/xml serves as a valid default.
-			".xul": return "application/vnd.mozilla.xul+xml"	#XUL	
-			".zip": return "application/zip" #ZIP archive	
-			".3gp": return "video/3gpp" #3GPP audio/video container	video/3gpp audio/3gpp if it doesn't contain video
-			".3g2": return "video/3gpp2" #3GPP2 audio/video container	video/3gpp2 audio/3gpp2 if it doesn't contain video
-			".7z": return "application/x-7z-compressed"	#7-zip archive	
-			default: return "Type Not Found"
-		}
+		return FileTable[type]
 	end
 	
+	method build_Table()
+		# Poor readability, might want to change to individual assignments for easier reading in the future.
+		insert(FileTable,".aac","audio/aac",".abw","application/x-abiword",".arc","application/x-freearc",".avi","video/x-msvideo",".azw","application/vnd.amazon.ebook",".bin","application/octet-stream",".bmp","image/bmp",".bz","application/x-bzip",".bz2","application/x-bzip2",".cda","application/x-cdf",".csh","application/x-csh",".css","text/css",".csv","text/csv",".doc","application/msword",".docx","application/vnd.openxmlformats-officedocument.wordprocessingml.document",".eot","application/vnd.ms-fontobject",".epub","application/epub+zip",".gz","application/gzip",".gif","image/gif",".htm","text/html",".html","text/html",".ico","image/vnd.microsoft.icon",".ics","text/calendar",".jar","application/java-archive",".jpeg","image/jpeg",".jpg","image/jpeg",".js","text/javascript",".json","application/json",".jsonld","application/ld+json",".mid","audio/midi",".midi","audio/x-midi",".mjs","text/javascript",".mp3","audio/mpeg",".mp4","video/mp4",".mpeg","video/mpeg",".mpkg","application/vnd.apple.installer+xml",".odp","application/vnd.oasis.opendocument.presentation",".ods","application/vnd.oasis.opendocument.spreadsheet",".odt","application/vnd.oasis.opendocument.text",".oga","audio/ogg",".ogv","video/ogg",".ogx","application/ogg",".opus","audio/opus",".otf","font/otf",".png","image/png",".pdf","application/pdf",".php","application/x-httpd-php",".ppt","application/vnd.ms-powerpoint",".pptx","application/vnd.openxmlformats-officedocument.presentationml.presentation",".rar","application/vnd.rar",".rtf","application/rtf",".sh","application/x-sh",".svg","image/svg+xml",".swf","application/x-shockwave-flash",".tar","application/x-tar",".tif","image/tiff",".tiff","image/tiff",".ts","video/mp2t",".ttf","font/ttf",".txt","text/plain",".vsd","application/vnd.visio",".wav","audio/wav",".weba","audio/webm",".webm","video/webm",".webp","image/webp",".woff","font/woff",".woff2","font/woff2",".xhtml","application/xhtml+xml",".xls","application/vnd.ms-excel",".xlsx","application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",".xml","application/xml",".xul","application/vnd.mozilla.xul+xml",".zip","application/zip",".3gp","video/3gpp",".3g2","video/3gpp2",".7z","application/x-7z-compressed")
+	end
+
 	initially(in_type)
 		type:=in_type
+		FileTable := table("File extension does not exist.")
+		build_Table()
 		MIME_type:=get_MIME(type)
 end
 
