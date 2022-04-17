@@ -1,5 +1,7 @@
 link strings
 link ximage
+import lang
+global UserList
 global sock_list, config
 class TCPSession(sock)
 #<p>
@@ -116,6 +118,31 @@ procedure get_file_type(str)
         return ""
 end
 
+procedure readPassFile(passfile)
+    local user, pass
+    UserList := table()
+    stat(passfile) | stop("Error: Could not open credentials file")
+    file := open(passfile)
+    while line := read(file) do {
+        line ? {
+            user := tab(upto(':'))
+			move(1)
+            pass := tab(0)
+        }
+        UserList[user] := hash_string(pass) 
+    }
+end
+
+procedure check(username, password)
+    if(\UserList[username]) then {
+        if(UserList[username] == hash_string(password)) then
+            return "Successful login"
+        else
+            return "Incorrect password" 
+    }
+    return "User not found"
+end
+
 class Logger(log_file, log_level)
 	# Ideally this method would be private
         method log(msg, logType)
@@ -174,6 +201,7 @@ end
 procedure main(args)
    local opts, port, addr
    read_config("config.ini")
+   readPassFile("credentials.txt")
    Logger("server_log.txt", config["LOG_LEVEL"])
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
@@ -402,7 +430,7 @@ class Request_Response(
 method authenticate()
 	
 	s := handle_status("401")
-	response := http_version||" "||s.message||" "||"\r\nWWW-Authenticate: Basic\r\nAccept-Ranges: bytes"
+	response := http_version||" "||s.message||"\r\nDate:"||&date||" "||&clock||"\r\nServer: Unicon Server"||" "||"\r\nWWW-Authenticate: Basic realm=\"access to site\"\r\nAccept-Ranges: bytes\r\n\r\n"
 	
 	return response
 end
