@@ -1,5 +1,7 @@
 link strings
 link ximage
+import lang
+global UserList
 global sock_list, config
 class TCPSession(sock)
 #<p>
@@ -116,6 +118,31 @@ procedure get_file_type(str)
         return ""
 end
 
+procedure readPassFile(passfile)
+    local user, pass
+    UserList := table()
+    stat(passfile) | stop("Error: Could not open credentials file")
+    file := open(passfile)
+    while line := read(file) do {
+        line ? {
+            user := tab(upto(':'))
+			move(1)
+            pass := tab(0)
+        }
+        UserList[user] := hash_string(pass) 
+    }
+end
+
+procedure check(username, password)
+    if(\UserList[username]) then {
+        if(UserList[username] == hash_string(password)) then
+            return "Successful login"
+        else
+            return "Incorrect password" 
+    }
+    return "User not found"
+end
+
 class Logger(log_file, log_level)
 	# Ideally this method would be private
         method log(msg, logType)
@@ -174,6 +201,7 @@ end
 procedure main(args)
    local opts, port, addr
    read_config("config.ini")
+   readPassFile("credentials.txt")
    Logger("server_log.txt", config["LOG_LEVEL"])
    opts := xoptions(args, "ha:p+")
    /opts["h"] | usage()
@@ -190,7 +218,7 @@ end
 #</p>
 procedure sig(siganl)
    write("\nshutdown signal received! Server Shutting down...")
-   every close(!sock_list) || &error := 1
+   every close(!sock_list)
    exit(0)
 end
 
@@ -284,6 +312,7 @@ class Request(
 		parse_request(msg)
 end
 
+link base64
 class Request_Response(
     header_fields,
     body,
@@ -303,7 +332,9 @@ class Request_Response(
 
 		case form of{
 			"HEAD" : return handle_HEAD()
-			"GET" : return handle_GET()
+			"GET" : if config["AUTHENTICATE"] == "True" then {return authenticate()} 
+			else 
+			return handle_GET()
 			"DELETE" : return handle_DELETE()
 			"PUT" : return handle_PUT()
 			"POST": return handle_POST()
@@ -337,9 +368,10 @@ class Request_Response(
 #</p>
 	method handle_GET()
 		
+		
 		if /request_target then { s:=handle_status("400")
 								response:=s.message
-								return response}
+							return response}
 		if request_target=="" then{
 			filename:="index.html"
 			#filename:="helloworld.jpg"
@@ -399,6 +431,113 @@ class Request_Response(
 		return response
 			
 	end
+	
+method auth()
+	local full, pass, user
+	full := ""
+	user := ""
+	pass := "" 
+	every header := !header_fields do
+	{
+	 
+	 	line := header
+	 	
+	 	line ?{ 
+	 		temp := tab(upto(":")) }
+	
+		if temp == "Authorization" then
+		{
+			line ?{
+				move(21)
+				pass := tab(0)
+		
+		full := base64decode(pass)
+		}
+		}
+	}
+	full ?{
+		user := tab(upto(":"))
+		move(1)
+		pass := tab(0)	
+	}
+	
+	if /user then {} else
+	{
+	if check(user,pass) == "Successful login" then {
+		
+		return handle_GET()
+	}
+	
+	}
+	end
+method authenticate()
+
+	res := auth()
+	
+	if /res then {} else
+	{
+		return res
+	}
+if /request_target then { s:=handle_status("400")
+								response:=s.message
+								return response}
+		
+			filename:="un.html"
+			
+		
+		
+		filename?{
+			tab(find("."))
+			file_type:=tab(0)
+		}
+	
+		type:=Mime(file_type)
+		
+		if(file_type==".jpg"|".gif"|".jpeg"|".png"|".bmp") then{
+			fin := open(filename,"ru")| {
+				s:=handle_status("404")
+				response:=s.message
+				t:=http_version||" "|| response
+				return t
+			}
+			if p := stat(fin)then(
+				data := reads(fin, p.size)|fail
+			
+			)else{ s:=handle_status("404")
+						response:=s.message
+						return response} 
+			
+			close(fin)
+		}else{
+			fin := open(filename)| {
+				s:=handle_status("404")
+				response:=s.message
+				t:=http_version||" "|| response
+				return t
+			}
+			if p := stat(fin)then(
+				data := reads(fin, p.size)|fail
+			
+			)else{s:=handle_status("404")
+				response:=s.message
+				t:=http_version||" "|| response
+				return t}
+			
+			close(fin)
+		}
+		
+		st:=stat(filename)
+		
+		s:=handle_status("401")
+		
+		response:=http_version||" "||s.message||"\r\nDate:"||&date||" "||&clock||"\r\nServer: Unicon Server"||"\r\nLast-Modified: "||ctime(st.mtime)||"\r\nETag: \""||hash(st.mtime)||"\"\r\nWWW-Authenticate: Basic\r\nAccept-Ranges: bytes\r\nContent-Length: "||st.size||"\r\nContent-Type: "||type.MIME_type||"\r\nConnection: keep-alive"
+
+		response:=response||"\r\n\r\n"||data
+		
+		
+		return response
+
+end
 #<p>
 #	The method <tt>handle_DELETE</tt> removes the requested file
 #		<[return response confirmation of the removal]>
@@ -651,6 +790,7 @@ class handle_status(code,
 				   
 		#	Client Error 4xx
 		"400" : return "400 Bad Request"
+		"401" : return "401 Unauthorized"
 		"402" : return "402 Payment Required"
 		"403" : return "403 Forbidden"
 		"404" : return "404 Not Found"
